@@ -477,7 +477,7 @@ def shap_text_explanation(X_input: pd.DataFrame, shap_values_row: np.ndarray):
 # Global CSS (fix dropdown + one-shot button fix)
 # =========================
 def inject_global_css():
-    bg64 = img_to_base64("web背景.png")
+    bg64 = img_to_base64("weback.png")
     bg_css = f"background-image:url('data:image/png;base64,{bg64}');" if bg64 else "background:#0a0e1c;"
 
     st.markdown(
@@ -664,7 +664,7 @@ div[data-testid="stDownloadButton"] button:hover {{
 # Welcome Screen
 # =========================
 def show_welcome_screen():
-    bg64 = img_to_base64("web背景.png")
+    bg64 = img_to_base64("weback.png")
     logo64 = img_to_base64("greenwise_logo.png")
 
     mission = (
