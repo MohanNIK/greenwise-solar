@@ -3,10 +3,11 @@
 # Run:
 #   streamlit run app.py
 #
-# Optional files in same folder:
-# - web背景.png          (main background + welcome background)
-# - greenwise_logo.png   (welcome logo)
-# - xgb_payback.pkl      (optional; if missing, the app auto-trains a demo model)
+# Optional files in same folder (case-sensitive on Streamlit Cloud!):
+# - weback1.png          (main background for app pages)
+# - weback2.png          (welcome/landing background)
+# - greenwise_logo.png   (logo)
+# - xgb_payback.pkl      (optional; if missing, auto-trains a demo model)
 # - synthetic_train_data.csv (auto-generated for SHAP background)
 
 import os
@@ -30,6 +31,13 @@ except Exception:
     HAS_ML = False
 
 st.set_page_config(page_title="GreenWise · Solar PV Decision Platform", layout="wide")
+
+# -------------------------
+# Assets
+# -------------------------
+BG_MAIN = "weback1.png"
+BG_WELCOME = "weback2.png"
+LOGO_PATH = "greenwise_logo.png"
 
 # -------------------------
 # Constants
@@ -69,6 +77,13 @@ def clear_query_params():
         st.query_params.clear()
     except Exception:
         st.experimental_set_query_params()
+
+
+def do_rerun():
+    try:
+        st.rerun()
+    except Exception:
+        st.experimental_rerun()
 
 
 def fmt_year(x):
@@ -326,7 +341,6 @@ def train_demo_model_synthetic(n_samples: int = 2500, random_state: int = 42):
 
 
 def ensure_demo_model():
-    """Always have a usable model for demo."""
     if not HAS_ML:
         return None
 
@@ -346,7 +360,6 @@ def ensure_demo_model():
 
 @st.cache_data(show_spinner=False)
 def get_shap_background(max_rows: int = 400) -> pd.DataFrame:
-    """Background data for permutation SHAP (stable)."""
     if os.path.exists("synthetic_train_data.csv"):
         try:
             df = pd.read_csv("synthetic_train_data.csv")
@@ -366,10 +379,8 @@ def get_shap_background(max_rows: int = 400) -> pd.DataFrame:
 
 
 def _predict_any_xgb(model, z_np: np.ndarray) -> np.ndarray:
-    """Predict helper that supports XGBRegressor or Booster."""
     z_df = pd.DataFrame(z_np, columns=FEATURE_COLS).astype(float)
 
-    # Booster path
     try:
         if HAS_ML and ("xgb" in globals()) and isinstance(model, xgb.Booster):
             dm = xgb.DMatrix(z_df.values, feature_names=FEATURE_COLS)
@@ -377,21 +388,13 @@ def _predict_any_xgb(model, z_np: np.ndarray) -> np.ndarray:
     except Exception:
         pass
 
-    # sklearn wrapper path
     return np.array(model.predict(z_df), dtype=float).reshape(-1)
 
 
 def shap_single_plots(model, X_input: pd.DataFrame, plot_type: str):
-    """
-    Stable SHAP:
-    - Try TreeExplainer (fast) first
-    - If ANY error, force Permutation (never Exact)
-    - Use max_evals=256 to avoid the 'Exact requires 128 evals' crash
-    """
     X = X_input.copy().astype(float)
     X_np = X.values.astype(np.float64)
 
-    # ---------- 1) Fast path: TreeExplainer ----------
     try:
         model_for_explainer = model
         try:
@@ -429,7 +432,6 @@ def shap_single_plots(model, X_input: pd.DataFrame, plot_type: str):
         return plt.gcf(), sv_row
 
     except Exception:
-        # ---------- 2) Stable path: force Permutation (never Exact) ----------
         bg = get_shap_background(max_rows=400)
         masker = shap.maskers.Independent(bg.values.astype(np.float64))
 
@@ -474,17 +476,17 @@ def shap_text_explanation(X_input: pd.DataFrame, shap_values_row: np.ndarray):
 
 
 # =========================
-# Global CSS (fix dropdown + one-shot button fix)
+# Global CSS
 # =========================
 def inject_global_css():
-    bg64 = img_to_base64("weback.png")
+    bg64 = img_to_base64(BG_MAIN)
     bg_css = f"background-image:url('data:image/png;base64,{bg64}');" if bg64 else "background:#0a0e1c;"
 
     st.markdown(
         dedent(
             f"""
 <style>
-/* Full app background */
+/* App background */
 .stApp {{
   {bg_css}
   background-size: cover;
@@ -507,9 +509,15 @@ section[data-testid="stSidebar"], main, header, footer {{
   z-index: 1;
 }}
 
+/* Reduce top blank area (Cloud looks better) */
 header[data-testid="stHeader"] {{
   background: transparent !important;
 }}
+div[data-testid="stToolbar"] {{
+  visibility: hidden !important;
+  height: 0 !important;
+}}
+#MainMenu {{ visibility: hidden; }}
 
 .block-container {{
   padding-top: 0.35rem;
@@ -536,17 +544,22 @@ div[data-testid="stMetric"] {{
   padding: 12px 14px;
   backdrop-filter: blur(6px);
 }}
+div[data-testid="stMetric"] * {{
+  color: rgba(255,255,255,0.92) !important;
+}}
 
-/* Global typography
-   关键：不要全局强行写 span 颜色（会把按钮里的 span 文本颜色也强行改掉） */
-h1, h2, h3, p, label, div {{
+/* Global typography (IMPORTANT: do NOT color all div; it breaks button text) */
+h1, h2, h3, h4, h5, h6, p, label {{
   color: rgba(255,255,255,0.92);
 }}
 .stCaption, .stMarkdown small {{
   color: rgba(255,255,255,0.72) !important;
 }}
+div[data-testid="stMarkdownContainer"] * {{
+  color: rgba(255,255,255,0.92);
+}}
 
-/* --- Selectbox visibility FIX (all dropdowns) --- */
+/* --- Selectbox visibility FIX --- */
 div[data-testid="stSelectbox"] label {{
   color: rgba(255,75,75,0.98) !important;
   font-weight: 800 !important;
@@ -587,7 +600,7 @@ div[data-baseweb="popover"] li:hover {{
   overflow: hidden !important;
 }}
 
-/* ===== Default buttons: white bg + black text (still readable) ===== */
+/* ===== Buttons: force readable text ===== */
 div[data-testid="stButton"] button,
 div[data-testid="stDownloadButton"] button,
 div.stDownloadButton > button,
@@ -597,17 +610,18 @@ div.stDownloadButton > button,
   border: 1px solid rgba(255,255,255,0.75) !important;
   font-weight: 900 !important;
 }}
+div[data-testid="stButton"] button *,
+div[data-testid="stDownloadButton"] button * {{
+  color: #111111 !important;
+  font-weight: 900 !important;
+}}
 div[data-testid="stButton"] button:hover,
 div[data-testid="stDownloadButton"] button:hover {{
   background: #ffffff !important;
   color: #111111 !important;
 }}
 
-/* ===== Plan B (最稳)：只把这些 key 对应的按钮改成 黑底白字 =====
-   关键点：
-   - download_button 在不同版本可能是 button 或 a
-   - 必须覆盖内部所有子元素（span 等）
-*/
+/* Key-based button styling (for dark buttons) */
 .st-key-btn_shap :is(button, a),
 .st-key-dl_summary :is(button, a),
 .st-key-dl_capacity :is(button, a),
@@ -616,7 +630,6 @@ div[data-testid="stDownloadButton"] button:hover {{
   border: 1px solid rgba(255,255,255,0.35) !important;
   border-radius: 10px !important;
 }}
-
 .st-key-btn_shap :is(button, a, button *, a *),
 .st-key-dl_summary :is(button, a, button *, a *),
 .st-key-dl_capacity :is(button, a, button *, a *),
@@ -624,7 +637,6 @@ div[data-testid="stDownloadButton"] button:hover {{
   color: #ffffff !important;
   font-weight: 900 !important;
 }}
-
 .st-key-dl_summary a,
 .st-key-dl_capacity a,
 .st-key-dl_cashflow a {{
@@ -634,7 +646,6 @@ div[data-testid="stDownloadButton"] button:hover {{
   padding: 0.45rem 0.9rem !important;
   text-decoration: none !important;
 }}
-
 .st-key-btn_shap :is(button:hover, a:hover),
 .st-key-dl_summary :is(button:hover, a:hover),
 .st-key-dl_capacity :is(button:hover, a:hover),
@@ -642,13 +653,27 @@ div[data-testid="stDownloadButton"] button:hover {{
   background: #000000 !important;
 }}
 
-/* Export section title chips */
+/* About page nav buttons (white bg, black text, full width friendly) */
+.st-key-about_to_platform button,
+.st-key-about_to_welcome button {{
+  background: rgba(255,255,255,0.95) !important;
+  border: 1px solid rgba(255,255,255,0.75) !important;
+  border-radius: 12px !important;
+  width: 100% !important;
+}}
+.st-key-about_to_platform button *,
+.st-key-about_to_welcome button * {{
+  color: #111111 !important;
+  font-weight: 900 !important;
+}}
+
+/* Chips */
 .gw-chip {{
   display:inline-block;
   padding: 6px 12px;
   border-radius: 999px;
   background: rgba(255,255,255,0.92);
-  color: #111111;
+  color: #111111 !important;
   font-weight: 900;
   border: 1px solid rgba(0,0,0,0.12);
   margin: 6px 0 10px 0;
@@ -661,30 +686,37 @@ div[data-testid="stDownloadButton"] button:hover {{
 
 
 # =========================
-# Welcome Screen
+# Welcome Screen (Landing)
 # =========================
 def show_welcome_screen():
-    bg64 = img_to_base64("weback.png")
-    logo64 = img_to_base64("greenwise_logo.png")
+    bg64 = img_to_base64(BG_WELCOME)
+    logo64 = img_to_base64(LOGO_PATH)
 
     mission = (
-        "GreenWise empowers enterprises to make transparent, data-driven rooftop solar investment decisions—"
+        "GreenWise helps enterprises make transparent, data-driven rooftop solar decisions—"
         "optimizing PV capacity, estimating payback/ROI, quantifying CO₂ reduction, and explaining key drivers with SHAP."
     )
 
     bg_css = f"background-image:url('data:image/png;base64,{bg64}');" if bg64 else "background:#0a0e1c;"
-    logo_html = f"<img src='data:image/png;base64,{logo64}' style='height:76px;margin-bottom:14px;'/>" if logo64 else ""
+    logo_html = f"<img src='data:image/png;base64,{logo64}' style='height:82px;margin:0 0 14px 0;'/>" if logo64 else ""
 
     welcome_html = (
         "<style>"
+        "header[data-testid='stHeader']{background:transparent !important;}"
+        "div[data-testid='stToolbar']{visibility:hidden !important;height:0 !important;}"
+        "#MainMenu{visibility:hidden;}"
         f".welcome-overlay{{position:fixed;inset:0;{bg_css}background-size:cover;background-position:center;z-index:9999;}}"
-        ".welcome-overlay::before{content:'';position:absolute;inset:0;background:radial-gradient(1200px 800px at 20% 20%, rgba(0,0,0,0.15), rgba(0,0,0,0.72));}"
-        ".welcome-card{position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);width:min(900px,92vw);padding:30px 28px;border-radius:24px;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.18);backdrop-filter:blur(10px);color:rgba(255,255,255,0.92);text-align:center;}"
-        ".welcome-title{font-size:48px;font-weight:900;letter-spacing:0.4px;margin:6px 0 10px 0;}"
+        ".welcome-overlay::before{content:'';position:absolute;inset:0;background:radial-gradient(1200px 800px at 20% 20%, rgba(0,0,0,0.10), rgba(0,0,0,0.78));}"
+        ".welcome-card{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);width:min(900px,92vw);padding:30px 28px;border-radius:26px;"
+        "background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.18);backdrop-filter:blur(12px);color:rgba(255,255,255,0.92);text-align:center;}"
+        ".welcome-title{font-size:52px;font-weight:900;letter-spacing:0.4px;margin:6px 0 10px 0;}"
         ".welcome-subtitle{font-size:15px;opacity:0.86;margin-bottom:12px;}"
         ".welcome-mission{font-size:16px;line-height:1.6;opacity:0.92;margin:0 auto 18px auto;max-width:780px;}"
-        ".welcome-hint{font-size:15px;opacity:0.88;margin-top:12px;}"
-        ".welcome-btn{display:inline-block;margin-top:10px;padding:16px 40px;border-radius:999px;background:#ffffff;border:1px solid rgba(255,255,255,0.75);color:#111111;font-weight:900;font-size:20px;text-decoration:none;}"
+        ".welcome-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:10px;}"
+        ".welcome-btn{display:inline-block;padding:14px 28px;border-radius:999px;background:#ffffff;border:1px solid rgba(255,255,255,0.75);"
+        "color:#111111;font-weight:900;font-size:18px;text-decoration:none;}"
+        ".welcome-btn.secondary{background:rgba(0,0,0,0.55);border:1px solid rgba(255,255,255,0.35);color:#ffffff;}"
+        ".welcome-hint{font-size:14px;opacity:0.85;margin-top:12px;}"
         "</style>"
         "<div class='welcome-overlay' id='gw_welcome'>"
         "<div class='welcome-card'>"
@@ -692,8 +724,11 @@ def show_welcome_screen():
         "<div class='welcome-title'>GreenWise</div>"
         "<div class='welcome-subtitle'>Solar PV Decision Platform</div>"
         f"<div class='welcome-mission'>{mission}</div>"
-        "<a class='welcome-btn' href='?start=1' id='gw_start_btn'>Enter Platform</a>"
-        "<div class='welcome-hint'>Click “Enter Platform” to enter GreenWise.</div>"
+        "<div class='welcome-actions'>"
+        "<a class='welcome-btn secondary' href='?page=about'>Explore Story</a>"
+        "<a class='welcome-btn' href='?page=platform'>Enter Platform</a>"
+        "</div>"
+        "<div class='welcome-hint'>Tip: Click anywhere or press any key to enter the Platform.</div>"
         "</div></div>"
     )
 
@@ -702,13 +737,13 @@ def show_welcome_screen():
     st.components.v1.html(
         """
 <script>
-function gwStart(){
+function goPlatform(){
   const url = new URL(window.location.href);
-  url.searchParams.set("start","1");
+  url.searchParams.set("page","platform");
   window.location.href = url.toString();
 }
-document.addEventListener("keydown", function(){ gwStart(); }, {once:true});
-document.addEventListener("click", function(){ gwStart(); }, {once:true});
+document.addEventListener("keydown", function(){ goPlatform(); }, {once:true});
+document.addEventListener("click", function(){ goPlatform(); }, {once:true});
 </script>
         """,
         height=0,
@@ -716,32 +751,167 @@ document.addEventListener("click", function(){ gwStart(); }, {once:true});
 
 
 # =========================
-# Gate
+# Sidebar Navigation (always visible after landing)
 # =========================
-params = safe_get_query_params()
-if "started" not in st.session_state:
-    st.session_state.started = False
+def sidebar_navigation(current_page: str) -> str:
+    page_map = {
+        "Welcome / Landing": "welcome",
+        "About GreenWise": "about",
+        "Decision Platform": "platform",
+    }
+    inv_map = {v: k for k, v in page_map.items()}
+    default_label = inv_map.get(current_page, "Decision Platform")
 
-start_val = params.get("start", "0")
-if isinstance(start_val, list):
-    start_val = start_val[0] if start_val else "0"
+    with st.sidebar:
+        st.markdown("## GreenWise")
+        choice = st.radio(
+            "Navigation",
+            list(page_map.keys()),
+            index=list(page_map.keys()).index(default_label),
+            key="gw_nav",
+        )
+        st.caption("Switch pages anytime. On **Decision Platform**, inputs appear below.")
+        st.divider()
 
-if (not st.session_state.started) and (str(start_val) == "1"):
-    st.session_state.started = True
-    clear_query_params()
+    return page_map[choice]
 
-if not st.session_state.started:
-    show_welcome_screen()
-    st.stop()
-
-inject_global_css()
 
 # =========================
-# Header
+# About Page (Story Page)  ← NEW
 # =========================
-st.markdown(
-    dedent(
-        """
+def show_about_page():
+    st.markdown(
+        dedent(
+            """
+<div style="padding: 18px 18px; border-radius: 20px;
+            background: rgba(0,0,0,0.32);
+            border: 1px solid rgba(255,255,255,0.14);
+            backdrop-filter: blur(12px);">
+  <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+    <div class="gw-chip">About GreenWise</div>
+  </div>
+  <div style="font-size: 40px; font-weight: 900; letter-spacing: 0.2px; margin-top: 6px;">
+    Story · Feasibility · Impact
+  </div>
+  <div style="margin-top: 10px; color: rgba(255,255,255,0.82); font-size: 15px; line-height: 1.6;">
+    GreenWise is designed for early-stage decision-making: instead of complex engineering tools or spreadsheets for experts,
+    it helps managers answer one question clearly — <b>“Is rooftop solar worth investing in for my company?”</b>
+  </div>
+</div>
+"""
+        ),
+        unsafe_allow_html=True,
+    )
+    st.write("")
+
+    # 3 cards
+    c1, c2, c3 = st.columns(3)
+    card_style = """
+<div style="padding:16px 16px;border-radius:18px;background:rgba(0,0,0,0.30);
+            border:1px solid rgba(255,255,255,0.14);backdrop-filter:blur(10px);min-height:170px;">
+  <div class="gw-chip">{tag}</div>
+  <div style="font-size:18px;font-weight:900;margin-top:8px;">{title}</div>
+  <div style="margin-top:8px;color:rgba(255,255,255,0.82);font-size:14px;line-height:1.6;">{body}</div>
+</div>
+"""
+    with c1:
+        st.markdown(
+            card_style.format(
+                tag="The Problem",
+                title="Uncertainty blocks action",
+                body=(
+                    "Enterprises face rising pressure to reduce emissions, and rooftop solar is attractive. "
+                    "Yet adoption is slow because decision-makers lack clarity: payback is uncertain, risks are hard to quantify, "
+                    "and existing tools are too technical."
+                ),
+            ),
+            unsafe_allow_html=True,
+        )
+    with c2:
+        st.markdown(
+            card_style.format(
+                tag="Our Solution",
+                title="Fast decision support",
+                body=(
+                    "Users input basic information (demand, roof, price, cost assumptions). "
+                    "GreenWise evaluates feasibility and outputs investment cost, savings, payback/ROI, and CO₂ reduction — "
+                    "focusing on speed, transparency, and manager-friendly communication."
+                ),
+            ),
+            unsafe_allow_html=True,
+        )
+    with c3:
+        st.markdown(
+            card_style.format(
+                tag="Why It Matters",
+                title="From goals to real investments",
+                body=(
+                    "By reducing financial uncertainty, GreenWise helps enterprises make faster, more confident green investment decisions, "
+                    "accelerating rooftop solar adoption and contributing directly to carbon emission reduction goals."
+                ),
+            ),
+            unsafe_allow_html=True,
+        )
+
+    st.write("")
+
+    st.markdown(
+        dedent(
+            """
+<div style="padding:16px 16px;border-radius:18px;background:rgba(0,0,0,0.30);
+            border:1px solid rgba(255,255,255,0.14);backdrop-filter:blur(10px);">
+  <div class="gw-chip">Key Innovations</div>
+  <ul style="margin-top:10px;color:rgba(255,255,255,0.86);font-size:14px;line-height:1.7;">
+    <li><b>Automatic capacity optimization</b>: evaluates a range of feasible PV sizes and recommends the best capacity, instead of a few fixed scenarios.</li>
+    <li><b>Explainable ML (XGBoost + SHAP)</b>: reveals which inputs most influence payback, so users understand why a recommendation is made.</li>
+    <li><b>Decision-first design</b>: outputs manager-facing metrics (payback/ROI/cashflow/CO₂), with clear exportable results.</li>
+  </ul>
+</div>
+"""
+        ),
+        unsafe_allow_html=True,
+    )
+
+    st.write("")
+
+    st.markdown(
+        dedent(
+            """
+<div style="padding:16px 16px;border-radius:18px;background:rgba(0,0,0,0.30);
+            border:1px solid rgba(255,255,255,0.14);backdrop-filter:blur(10px);">
+  <div class="gw-chip">Website Requirements Alignment</div>
+  <div style="margin-top:10px;color:rgba(255,255,255,0.82);font-size:14px;line-height:1.7;">
+    This website is structured to meet innovation-competition expectations:
+    it <b>tells our story</b> (problem → solution → impact), <b>shows the product prototype</b> (Decision Platform),
+    <b>builds a consistent brand</b> (name/logo/visual style), and makes the project easy to understand for both the public and judges.
+  </div>
+</div>
+"""
+        ),
+        unsafe_allow_html=True,
+    )
+
+    st.write("")
+
+    # Bottom nav buttons
+    b1, b2 = st.columns(2)
+    with b1:
+        if st.button("Go to Decision Platform", key="about_to_platform", use_container_width=True):
+            st.session_state.gw_page = "platform"
+            do_rerun()
+    with b2:
+        if st.button("Back to Welcome", key="about_to_welcome", use_container_width=True):
+            st.session_state.gw_page = "welcome"
+            do_rerun()
+
+
+# =========================
+# Decision Platform Page (your original core)
+# =========================
+def show_platform_page():
+    st.markdown(
+        dedent(
+            """
 <div style="padding: 14px 18px; border-radius: 18px;
             background: rgba(0,0,0,0.28);
             border: 1px solid rgba(255,255,255,0.14);
@@ -754,333 +924,314 @@ st.markdown(
   </div>
 </div>
 """
-    ),
-    unsafe_allow_html=True,
-)
-st.write("")
-
-
-# =========================
-# Sidebar Inputs
-# =========================
-with st.sidebar:
-    st.header("Inputs")
-
-    annual_consumption_kwh = st.slider("Annual consumption (kWh/year)", 0, 5_000_000, 300_000, step=10_000)
-    price_y_per_kwh = st.slider("Electricity price (¥/kWh)", 0.00, 2.50, 0.95, step=0.01)
-
-    roof_area_m2 = st.slider("Available roof area (m²)", 0, 50_000, 800, step=50)
-    shading_level = st.selectbox("Shading level", list(SHADING_MAP.keys()), index=2)
-
-    st.divider()
-    st.subheader("PV & Finance")
-    capex_y_per_kw = st.slider("CAPEX (¥/kW)", 0, 20_000, 3800, step=50)
-    opex_pct = st.slider("OPEX (% of CAPEX per year)", 0.0, 5.0, 1.0, step=0.1)
-    self_use_ratio = st.slider("Self-consumption ratio", 0.10, 1.00, 0.80, step=0.05)
-
-    st.divider()
-    st.subheader("Carbon & Assumptions")
-    co2_factor_kg_per_kwh = st.slider("Grid CO₂ factor (kg/kWh)", 0.00, 1.20, 0.55, step=0.01)
-    degradation_pct = st.slider("PV degradation (%/year)", 0.0, 3.0, 0.5, step=0.1)
-    discount_rate_pct = st.slider("Discount rate (%/year)", 0.0, 15.0, 6.0, step=0.5)
-
-    st.divider()
-    st.subheader("Engineering Defaults")
-    kw_per_m2 = st.slider("kW per m²", 0.05, 0.35, 0.20, step=0.01)
-    kwh_per_kw_year = st.slider("Yield (kWh/kW·year)", 200, 2000, 1100, step=50)
-    export_price_y_per_kwh = st.slider("Export price (¥/kWh) [optional]", 0.00, 1.50, 0.00, step=0.01)
-
-    st.divider()
-    st.subheader("Auto-Optimization Objective")
-    objective_label = st.selectbox(
-        "Choose objective",
-        ["Minimize payback (simple)", "Maximize ROI (Year 1)", "Minimize discounted payback"],
-        index=0,
+        ),
+        unsafe_allow_html=True,
     )
-    objective_key = {
-        "Minimize payback (simple)": "min_payback",
-        "Maximize ROI (Year 1)": "max_roi",
-        "Minimize discounted payback": "min_discounted_payback",
-    }[objective_label]
+    st.write("")
 
+    # Sidebar Inputs
+    with st.sidebar:
+        st.header("Inputs")
 
-# =========================
-# Auto optimize + optional manual capacity
-# =========================
-kw_max_by_roof = roof_area_m2 * kw_per_m2
+        annual_consumption_kwh = st.slider("Annual consumption (kWh/year)", 0, 5_000_000, 300_000, step=10_000)
+        price_y_per_kwh = st.slider("Electricity price (¥/kWh)", 0.00, 2.50, 0.95, step=0.01)
 
-best, curve_df = find_optimal_capacity(
-    kw_max=kw_max_by_roof,
-    step_kw=2.0,
-    objective=objective_key,
-    annual_consumption_kwh=float(annual_consumption_kwh),
-    price_y_per_kwh=float(price_y_per_kwh),
-    roof_area_m2=float(roof_area_m2),
-    shading_level=shading_level,
-    capex_y_per_kw=float(capex_y_per_kw),
-    opex_pct=float(opex_pct),
-    self_use_ratio=float(self_use_ratio),
-    co2_factor_kg_per_kwh=float(co2_factor_kg_per_kwh),
-    degradation_pct=float(degradation_pct),
-    discount_rate_pct=float(discount_rate_pct),
-    kw_per_m2=float(kw_per_m2),
-    kwh_per_kw_year=float(kwh_per_kw_year),
-    export_price_y_per_kwh=float(export_price_y_per_kwh),
-)
+        roof_area_m2 = st.slider("Available roof area (m²)", 0, 50_000, 800, step=50)
+        shading_level = st.selectbox("Shading level", list(SHADING_MAP.keys()), index=2)
 
-if best is None or curve_df.empty:
-    st.error("No feasible scenario under current inputs. Please adjust assumptions and try again.")
-    st.stop()
+        st.divider()
+        st.subheader("PV & Finance")
+        capex_y_per_kw = st.slider("CAPEX (¥/kW)", 0, 20_000, 3800, step=50)
+        opex_pct = st.slider("OPEX (% of CAPEX per year)", 0.0, 5.0, 1.0, step=0.1)
+        self_use_ratio = st.slider("Self-consumption ratio", 0.10, 1.00, 0.80, step=0.05)
 
-recommended_kw = float(best["kW"])
+        st.divider()
+        st.subheader("Carbon & Assumptions")
+        co2_factor_kg_per_kwh = st.slider("Grid CO₂ factor (kg/kWh)", 0.00, 1.20, 0.55, step=0.01)
+        degradation_pct = st.slider("PV degradation (%/year)", 0.0, 3.0, 0.5, step=0.1)
+        discount_rate_pct = st.slider("Discount rate (%/year)", 0.0, 15.0, 6.0, step=0.5)
 
-use_manual = st.toggle("Use manual capacity (override recommendation)", value=False)
-if use_manual:
-    manual_kw = st.slider("Manual PV capacity (kW)", 0.0, float(kw_max_by_roof), float(recommended_kw), step=1.0)
-    chosen_kw = float(manual_kw)
-else:
-    chosen_kw = float(recommended_kw)
+        st.divider()
+        st.subheader("Engineering Defaults")
+        kw_per_m2 = st.slider("kW per m²", 0.05, 0.35, 0.20, step=0.01)
+        kwh_per_kw_year = st.slider("Yield (kWh/kW·year)", 200, 2000, 1100, step=50)
+        export_price_y_per_kwh = st.slider("Export price (¥/kWh) [optional]", 0.00, 1.50, 0.00, step=0.01)
 
-res = pv_estimate(
-    annual_consumption_kwh=float(annual_consumption_kwh),
-    price_y_per_kwh=float(price_y_per_kwh),
-    roof_area_m2=float(roof_area_m2),
-    shading_level=shading_level,
-    capex_y_per_kw=float(capex_y_per_kw),
-    opex_pct=float(opex_pct),
-    self_use_ratio=float(self_use_ratio),
-    co2_factor_kg_per_kwh=float(co2_factor_kg_per_kwh),
-    degradation_pct=float(degradation_pct),
-    discount_rate_pct=float(discount_rate_pct),
-    pv_kw=float(chosen_kw),
-    kw_per_m2=float(kw_per_m2),
-    kwh_per_kw_year=float(kwh_per_kw_year),
-    export_price_y_per_kwh=float(export_price_y_per_kwh),
-)
+        st.divider()
+        st.subheader("Auto-Optimization Objective")
+        objective_label = st.selectbox(
+            "Choose objective",
+            ["Minimize payback (simple)", "Maximize ROI (Year 1)", "Minimize discounted payback"],
+            index=0,
+        )
+        objective_key = {
+            "Minimize payback (simple)": "min_payback",
+            "Maximize ROI (Year 1)": "max_roi",
+            "Minimize discounted payback": "min_discounted_payback",
+        }[objective_label]
 
-tag, msg = recommendation(res["simple_payback_y"], res["roi_y1"])
+    # Auto optimize + optional manual capacity
+    kw_max_by_roof = roof_area_m2 * kw_per_m2
 
-# =========================
-# Main Layout: Metrics
-# =========================
-colA, colB, colC = st.columns([1.25, 1, 1])
-
-with colA:
-    st.subheader("Decision Summary")
-    st.metric("Decision", tag)
-    st.write(msg)
-    st.caption(
-        f"Rooftop capacity upper bound ≈ **{res['kw_max_by_roof']:.1f} kW** (area × kW/m²). "
-        f"Shading factor = **{res['shading_factor']:.2f}**."
+    best, curve_df = find_optimal_capacity(
+        kw_max=kw_max_by_roof,
+        step_kw=2.0,
+        objective=objective_key,
+        annual_consumption_kwh=float(annual_consumption_kwh),
+        price_y_per_kwh=float(price_y_per_kwh),
+        roof_area_m2=float(roof_area_m2),
+        shading_level=shading_level,
+        capex_y_per_kw=float(capex_y_per_kw),
+        opex_pct=float(opex_pct),
+        self_use_ratio=float(self_use_ratio),
+        co2_factor_kg_per_kwh=float(co2_factor_kg_per_kwh),
+        degradation_pct=float(degradation_pct),
+        discount_rate_pct=float(discount_rate_pct),
+        kw_per_m2=float(kw_per_m2),
+        kwh_per_kw_year=float(kwh_per_kw_year),
+        export_price_y_per_kwh=float(export_price_y_per_kwh),
     )
+
+    if best is None or curve_df.empty:
+        st.error("No feasible scenario under current inputs. Please adjust assumptions and try again.")
+        st.stop()
+
+    recommended_kw = float(best["kW"])
+
+    use_manual = st.toggle("Use manual capacity (override recommendation)", value=False)
     if use_manual:
-        st.info(f"Manual capacity selected: **{res['pv_kw']:.0f} kW** (Recommendation was {recommended_kw:.0f} kW).")
+        manual_kw = st.slider("Manual PV capacity (kW)", 0.0, float(kw_max_by_roof), float(recommended_kw), step=1.0)
+        chosen_kw = float(manual_kw)
     else:
-        st.success(f"Auto-recommended capacity: **{res['pv_kw']:.0f} kW**")
+        chosen_kw = float(recommended_kw)
 
-with colB:
-    st.subheader("Key Metrics (Year 1)")
-    st.metric("PV Capacity (kW)", f"{res['pv_kw']:.0f}")
-    st.metric("Generation (kWh)", f"{res['gen_kwh_y1']:.0f}")
-    st.metric("Savings (¥)", money(res["annual_savings_y1"]))
-    st.metric("CO₂ reduction (t)", f"{res['co2_ton_y1']:.1f}")
-
-with colC:
-    st.subheader("Finance")
-    st.metric("CAPEX (¥)", money(res["capex"]))
-    st.metric("Net cashflow Y1 (¥)", money(res["net_cash_y1"]))
-    st.metric("Simple payback (years)", fmt_year(res["simple_payback_y"]))
-    st.metric(
-        "Discounted payback (years)",
-        str(res["discounted_payback_y"]) if res["discounted_payback_y"] != math.inf else "∞",
+    res = pv_estimate(
+        annual_consumption_kwh=float(annual_consumption_kwh),
+        price_y_per_kwh=float(price_y_per_kwh),
+        roof_area_m2=float(roof_area_m2),
+        shading_level=shading_level,
+        capex_y_per_kw=float(capex_y_per_kw),
+        opex_pct=float(opex_pct),
+        self_use_ratio=float(self_use_ratio),
+        co2_factor_kg_per_kwh=float(co2_factor_kg_per_kwh),
+        degradation_pct=float(degradation_pct),
+        discount_rate_pct=float(discount_rate_pct),
+        pv_kw=float(chosen_kw),
+        kw_per_m2=float(kw_per_m2),
+        kwh_per_kw_year=float(kwh_per_kw_year),
+        export_price_y_per_kwh=float(export_price_y_per_kwh),
     )
 
-st.divider()
+    tag, msg = recommendation(res["simple_payback_y"], res["roi_y1"])
 
+    # Main Layout: Metrics
+    colA, colB, colC = st.columns([1.25, 1, 1])
 
-# =========================
-# Tabs
-# =========================
-tab1, tab2, tab3, tab4 = st.tabs(["📈 Curves & Scenarios", "💸 20-Year Cashflows", "🧠 Explainability (SHAP)", "⬇️ Export"])
-
-
-# -------- Tab 1: curves
-with tab1:
-    left, right = st.columns([1.15, 1])
-
-    with left:
-        st.subheader("Capacity Sweep")
-        metric_choice = st.selectbox("Metric", ["Payback(y)", "ROI(Y1)", "CO2(t/y)", "NetCashY1(¥)"], index=0)
-
-        plot_src = curve_df.copy()
-        plot_src = plot_src.replace([np.inf, -np.inf], np.nan).dropna(subset=[metric_choice])
-
-        if metric_choice == "ROI(Y1)":
-            plot_src["ROI_pct"] = plot_src["ROI(Y1)"] * 100.0
-            y_field = "ROI_pct:Q"
-            y_title = "ROI (Year 1, %)"
+    with colA:
+        st.subheader("Decision Summary")
+        st.metric("Decision", tag)
+        st.write(msg)
+        st.caption(
+            f"Rooftop capacity upper bound ≈ **{res['kw_max_by_roof']:.1f} kW** (area × kW/m²). "
+            f"Shading factor = **{res['shading_factor']:.2f}**."
+        )
+        if use_manual:
+            st.info(f"Manual capacity selected: **{res['pv_kw']:.0f} kW** (Recommendation was {recommended_kw:.0f} kW).")
         else:
-            y_field = f"{metric_choice}:Q"
-            y_title = metric_choice
+            st.success(f"Auto-recommended capacity: **{res['pv_kw']:.0f} kW**")
 
-        marker_df = pd.DataFrame({"kW": [float(res["pv_kw"])]})
-        chart = (
-            alt.Chart(plot_src)
-            .mark_line(point=True)
-            .encode(
-                x=alt.X("kW:Q", title="PV capacity (kW)"),
-                y=alt.Y(y_field, title=y_title),
-                tooltip=[
-                    alt.Tooltip("kW:Q", format=".0f"),
-                    alt.Tooltip("Payback(y):Q", format=".2f"),
-                    alt.Tooltip("ROI(Y1):Q", format=".3f"),
-                    alt.Tooltip("CO2(t/y):Q", format=".2f"),
-                    alt.Tooltip("NetCashY1(¥):Q", format=".0f"),
-                ],
+    with colB:
+        st.subheader("Key Metrics (Year 1)")
+        st.metric("PV Capacity (kW)", f"{res['pv_kw']:.0f}")
+        st.metric("Generation (kWh)", f"{res['gen_kwh_y1']:.0f}")
+        st.metric("Savings (¥)", money(res["annual_savings_y1"]))
+        st.metric("CO₂ reduction (t)", f"{res['co2_ton_y1']:.1f}")
+
+    with colC:
+        st.subheader("Finance")
+        st.metric("CAPEX (¥)", money(res["capex"]))
+        st.metric("Net cashflow Y1 (¥)", money(res["net_cash_y1"]))
+        st.metric("Simple payback (years)", fmt_year(res["simple_payback_y"]))
+        st.metric(
+            "Discounted payback (years)",
+            str(res["discounted_payback_y"]) if res["discounted_payback_y"] != math.inf else "∞",
+        )
+
+    st.divider()
+
+    tab1, tab2, tab3, tab4 = st.tabs(["📈 Curves & Scenarios", "💸 20-Year Cashflows", "🧠 Explainability (SHAP)", "⬇️ Export"])
+
+    # Tab 1: curves
+    with tab1:
+        left, right = st.columns([1.15, 1])
+
+        with left:
+            st.subheader("Capacity Sweep")
+            metric_choice = st.selectbox("Metric", ["Payback(y)", "ROI(Y1)", "CO2(t/y)", "NetCashY1(¥)"], index=0)
+
+            plot_src = curve_df.copy()
+            plot_src = plot_src.replace([np.inf, -np.inf], np.nan).dropna(subset=[metric_choice])
+
+            if metric_choice == "ROI(Y1)":
+                plot_src["ROI_pct"] = plot_src["ROI(Y1)"] * 100.0
+                y_field = "ROI_pct:Q"
+                y_title = "ROI (Year 1, %)"
+            else:
+                y_field = f"{metric_choice}:Q"
+                y_title = metric_choice
+
+            marker_df = pd.DataFrame({"kW": [float(res["pv_kw"])]})
+            chart = (
+                alt.Chart(plot_src)
+                .mark_line(point=True)
+                .encode(
+                    x=alt.X("kW:Q", title="PV capacity (kW)"),
+                    y=alt.Y(y_field, title=y_title),
+                    tooltip=[
+                        alt.Tooltip("kW:Q", format=".0f"),
+                        alt.Tooltip("Payback(y):Q", format=".2f"),
+                        alt.Tooltip("ROI(Y1):Q", format=".3f"),
+                        alt.Tooltip("CO2(t/y):Q", format=".2f"),
+                        alt.Tooltip("NetCashY1(¥):Q", format=".0f"),
+                    ],
+                )
+                .properties(height=320)
+                .interactive()
             )
-            .properties(height=320)
-            .interactive()
-        )
-        rule = alt.Chart(marker_df).mark_rule(strokeDash=[6, 6]).encode(x="kW:Q")
-        st.altair_chart(chart + rule, width="stretch")
+            rule = alt.Chart(marker_df).mark_rule(strokeDash=[6, 6]).encode(x="kW:Q")
+            st.altair_chart(chart + rule, width="stretch")
 
-    with right:
-        st.subheader("Scenario Snapshot (near chosen capacity)")
-        df_disp = curve_df.copy()
-        df_disp["dist"] = (df_disp["kW"] - float(res["pv_kw"])).abs()
-        df_disp = df_disp.sort_values("dist").head(14).drop(columns=["dist"])
+        with right:
+            st.subheader("Scenario Snapshot (near chosen capacity)")
+            df_disp = curve_df.copy()
+            df_disp["dist"] = (df_disp["kW"] - float(res["pv_kw"])).abs()
+            df_disp = df_disp.sort_values("dist").head(14).drop(columns=["dist"])
 
-        df_disp2 = df_disp.copy()
-        df_disp2["ROI(Y1)"] = (df_disp2["ROI(Y1)"] * 100).round(1).astype(str) + "%"
-        df_disp2["Payback(y)"] = df_disp2["Payback(y)"].round(2)
-        df_disp2["CO2(t/y)"] = df_disp2["CO2(t/y)"].round(1)
-        df_disp2["NetCashY1(¥)"] = df_disp2["NetCashY1(¥)"].round(0).astype(int)
+            df_disp2 = df_disp.copy()
+            df_disp2["ROI(Y1)"] = (df_disp2["ROI(Y1)"] * 100).round(1).astype(str) + "%"
+            df_disp2["Payback(y)"] = df_disp2["Payback(y)"].round(2)
+            df_disp2["CO2(t/y)"] = df_disp2["CO2(t/y)"].round(1)
+            df_disp2["NetCashY1(¥)"] = df_disp2["NetCashY1(¥)"].round(0).astype(int)
 
-        st.dataframe(df_disp2, width="stretch", height=330)
+            st.dataframe(df_disp2, width="stretch", height=330)
 
+    # Tab 2: cashflows
+    with tab2:
+        st.subheader("20-Year Cashflow & Discounted Cumulative")
 
-# -------- Tab 2: cashflows
-with tab2:
-    st.subheader("20-Year Cashflow & Discounted Cumulative")
+        cash_df = res["cashflow_df"].copy()
+        c1, c2 = st.columns([1, 1])
 
-    cash_df = res["cashflow_df"].copy()
-    c1, c2 = st.columns([1, 1])
+        with c1:
+            st.markdown("**Annual Net Cashflow (¥)**")
+            st.line_chart(cash_df.set_index("Year")[["NetCash_Y"]], width="stretch")
 
-    with c1:
-        st.markdown("**Annual Net Cashflow (¥)**")
-        st.line_chart(cash_df.set_index("Year")[["NetCash_Y"]], width="stretch")
+        with c2:
+            st.markdown("**Cumulative Discounted Cashflow (¥)**")
+            st.line_chart(cash_df.set_index("Year")[["CumDiscounted_Y"]], width="stretch")
 
-    with c2:
-        st.markdown("**Cumulative Discounted Cashflow (¥)**")
-        st.line_chart(cash_df.set_index("Year")[["CumDiscounted_Y"]], width="stretch")
+        st.dataframe(cash_df.round(2), width="stretch", height=360)
 
-    st.dataframe(cash_df.round(2), width="stretch", height=360)
+    # Tab 3: SHAP
+    with tab3:
+        st.subheader("Explainability (XGBoost + SHAP)")
 
+        model = ensure_demo_model() if HAS_ML else None
 
-# -------- Tab 3: SHAP
-with tab3:
-    st.subheader("Explainability (XGBoost + SHAP)")
+        if model is None:
+            st.info("To enable SHAP visuals, install: xgboost + shap + joblib + matplotlib.")
+        else:
+            X_input = (
+                pd.DataFrame(
+                    [
+                        {
+                            "annual_consumption_kwh": float(annual_consumption_kwh),
+                            "price_y_per_kwh": float(price_y_per_kwh),
+                            "roof_area_m2": float(roof_area_m2),
+                            "shading_factor": float(res["shading_factor"]),
+                            "capex_y_per_kw": float(capex_y_per_kw),
+                            "self_use_ratio": float(self_use_ratio),
+                            "pv_kw": float(res["pv_kw"]),
+                        }
+                    ]
+                )[FEATURE_COLS]
+                .astype(float)
+            )
 
-    model = ensure_demo_model() if HAS_ML else None
-
-    if model is None:
-        st.info("To enable SHAP visuals, install: xgboost + shap + joblib + matplotlib.")
-    else:
-        X_input = (
-            pd.DataFrame(
-                [
-                    {
-                        "annual_consumption_kwh": float(annual_consumption_kwh),
-                        "price_y_per_kwh": float(price_y_per_kwh),
-                        "roof_area_m2": float(roof_area_m2),
-                        "shading_factor": float(res["shading_factor"]),
-                        "capex_y_per_kw": float(capex_y_per_kw),
-                        "self_use_ratio": float(self_use_ratio),
-                        "pv_kw": float(res["pv_kw"]),
-                    }
-                ]
-            )[FEATURE_COLS]
-            .astype(float)
-        )
-
-        try:
-            pred = float(np.array(model.predict(X_input)).reshape(-1)[0])
-            st.metric("Model-predicted payback (years)", f"{pred:.2f}")
-        except Exception:
-            st.metric("Model-predicted payback (years)", "—")
-
-        st.markdown("### Single-case SHAP explanation")
-        plot_type = st.radio("Plot type", ["Bar", "Waterfall"], horizontal=True)
-
-        if st.button("Compute SHAP for current case", key="btn_shap"):
             try:
-                fig, sv_row = shap_single_plots(model, X_input, plot_type)
-                st.pyplot(fig, clear_figure=True)
-                st.info(shap_text_explanation(X_input, sv_row))
-            except Exception as e:
-                st.error("SHAP failed in your environment. Below is the real error:")
-                st.exception(e)
+                pred = float(np.array(model.predict(X_input)).reshape(-1)[0])
+                st.metric("Model-predicted payback (years)", f"{pred:.2f}")
+            except Exception:
+                st.metric("Model-predicted payback (years)", "—")
 
+            st.markdown("### Single-case SHAP explanation")
+            plot_type = st.radio("Plot type", ["Bar", "Waterfall"], horizontal=True)
 
-# -------- Tab 4: export
-with tab4:
-    st.subheader("Export results")
+            if st.button("Compute SHAP for current case", key="btn_shap"):
+                try:
+                    fig, sv_row = shap_single_plots(model, X_input, plot_type)
+                    st.pyplot(fig, clear_figure=True)
+                    st.info(shap_text_explanation(X_input, sv_row))
+                except Exception as e:
+                    st.error("SHAP failed in your environment. Below is the real error:")
+                    st.exception(e)
 
-    summary = pd.DataFrame(
-        [
-            {
-                "PV_kW": res["pv_kw"],
-                "Payback_y": res["simple_payback_y"],
-                "DiscPayback_y": res["discounted_payback_y"],
-                "ROI_Y1": res["roi_y1"],
-                "CAPEX_Y": res["capex"],
-                "NetCash_Y1": res["net_cash_y1"],
-                "Gen_kWh_Y1": res["gen_kwh_y1"],
-                "CO2_ton_Y1": res["co2_ton_y1"],
-                "SelfUsed_kWh_Y1": res["self_used_kwh_y1"],
-                "Exported_kWh_Y1": res["exported_kwh_y1"],
-            }
-        ]
-    )
+    # Tab 4: export
+    with tab4:
+        st.subheader("Export results")
 
-    st.markdown("<div class='gw-chip'>Summary (CSV)</div>", unsafe_allow_html=True)
-    st.dataframe(summary.round(4), width="stretch")
-    st.download_button(
-        "Download Summary CSV",
-        data=summary.to_csv(index=False).encode("utf-8"),
-        file_name="greenwise_summary.csv",
-        mime="text/csv",
-        key="dl_summary",
-    )
+        summary = pd.DataFrame(
+            [
+                {
+                    "PV_kW": res["pv_kw"],
+                    "Payback_y": res["simple_payback_y"],
+                    "DiscPayback_y": res["discounted_payback_y"],
+                    "ROI_Y1": res["roi_y1"],
+                    "CAPEX_Y": res["capex"],
+                    "NetCash_Y1": res["net_cash_y1"],
+                    "Gen_kWh_Y1": res["gen_kwh_y1"],
+                    "CO2_ton_Y1": res["co2_ton_y1"],
+                    "SelfUsed_kWh_Y1": res["self_used_kwh_y1"],
+                    "Exported_kWh_Y1": res["exported_kwh_y1"],
+                }
+            ]
+        )
 
-    st.markdown("<div class='gw-chip'>Capacity Sweep (CSV)</div>", unsafe_allow_html=True)
-    st.dataframe(curve_df.head(30), width="stretch")
-    st.download_button(
-        "Download Capacity Sweep CSV",
-        data=curve_df.to_csv(index=False).encode("utf-8"),
-        file_name="greenwise_capacity_sweep.csv",
-        mime="text/csv",
-        key="dl_capacity",
-    )
+        st.markdown("<div class='gw-chip'>Summary (CSV)</div>", unsafe_allow_html=True)
+        st.dataframe(summary.round(4), width="stretch")
+        st.download_button(
+            "Download Summary CSV",
+            data=summary.to_csv(index=False).encode("utf-8"),
+            file_name="greenwise_summary.csv",
+            mime="text/csv",
+            key="dl_summary",
+        )
 
-    st.markdown("<div class='gw-chip'>20-Year Cashflow (CSV)</div>", unsafe_allow_html=True)
-    st.dataframe(res["cashflow_df"].head(30), width="stretch")
-    st.download_button(
-        "Download Cashflow CSV",
-        data=res["cashflow_df"].to_csv(index=False).encode("utf-8"),
-        file_name="greenwise_cashflow_20y.csv",
-        mime="text/csv",
-        key="dl_cashflow",
-    )
+        st.markdown("<div class='gw-chip'>Capacity Sweep (CSV)</div>", unsafe_allow_html=True)
+        st.dataframe(curve_df.head(30), width="stretch")
+        st.download_button(
+            "Download Capacity Sweep CSV",
+            data=curve_df.to_csv(index=False).encode("utf-8"),
+            file_name="greenwise_capacity_sweep.csv",
+            mime="text/csv",
+            key="dl_capacity",
+        )
 
-st.divider()
+        st.markdown("<div class='gw-chip'>20-Year Cashflow (CSV)</div>", unsafe_allow_html=True)
+        st.dataframe(res["cashflow_df"].head(30), width="stretch")
+        st.download_button(
+            "Download Cashflow CSV",
+            data=res["cashflow_df"].to_csv(index=False).encode("utf-8"),
+            file_name="greenwise_cashflow_20y.csv",
+            mime="text/csv",
+            key="dl_cashflow",
+        )
 
-# =========================
-# Website Copy (English)
-# =========================
-st.subheader("Website Copy")
-st.markdown(
-    """
+    st.divider()
+
+    st.subheader("Website Copy")
+    st.markdown(
+        """
 GreenWise is a web-based decision support platform that helps enterprises evaluate the financial and environmental feasibility of rooftop solar PV investments.
 
 **What it provides**  
@@ -1089,4 +1240,41 @@ GreenWise is a web-based decision support platform that helps enterprises evalua
 - Annual CO₂ emissions reduction estimates  
 - Explainable AI (XGBoost + SHAP) to reveal transparent decision drivers
 """
-)
+    )
+
+
+# =========================
+# Page Router (Welcome / About / Platform)
+# =========================
+params = safe_get_query_params()
+
+if "gw_page" not in st.session_state:
+    st.session_state.gw_page = "welcome"
+
+# Query param routing: ?page=welcome/about/platform
+page_val = params.get("page", None)
+if isinstance(page_val, list):
+    page_val = page_val[0] if page_val else None
+if page_val in {"welcome", "about", "platform"}:
+    st.session_state.gw_page = page_val
+    clear_query_params()
+
+# Landing page
+if st.session_state.gw_page == "welcome":
+    show_welcome_screen()
+    st.stop()
+
+# App pages
+inject_global_css()
+
+# Sidebar nav always visible
+next_page = sidebar_navigation(st.session_state.gw_page)
+if next_page != st.session_state.gw_page:
+    st.session_state.gw_page = next_page
+    do_rerun()
+
+# Render page
+if st.session_state.gw_page == "about":
+    show_about_page()
+else:
+    show_platform_page()
